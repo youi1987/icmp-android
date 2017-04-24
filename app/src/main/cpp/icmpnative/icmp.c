@@ -14,8 +14,14 @@
 #include <jni.h>
 #include <android/log.h>
 
+#define LOGI(...) \
+  ((void)__android_log_print(ANDROID_LOG_INFO, "ICMP", __VA_ARGS__))
+#define LOGD(...) \
+  ((void)__android_log_print(ANDROID_LOG_DEBUG, "ICMP", __VA_ARGS__))
+
 int ping(const char *a, const int count)
 {
+    LOGD("start ping %s count:%d", a, count);
     struct sockaddr_in addr;
     struct icmphdr icmp_hdr;
     char packetdata[sizeof(icmp_hdr) + 5];
@@ -25,7 +31,7 @@ int ping(const char *a, const int count)
 
     if (inet_pton(AF_INET, a, &(addr.sin_addr)) < 0)
     {
-        __android_log_print(ANDROID_LOG_DEBUG, "ICMP", "inet_pton errno %d %s\n", errno, strerror(errno));
+       LOGD("inet_pton errno %d %s\n", errno, strerror(errno));
 
         return EXIT_FAILURE;
     }
@@ -34,7 +40,7 @@ int ping(const char *a, const int count)
 
     if(sock < 0)
     {
-        __android_log_print(ANDROID_LOG_DEBUG, "ICMP", "socket errno %d %s\n", errno, strerror(errno));
+       LOGD("socket errno %d %s\n", errno, strerror(errno));
 
         return EXIT_FAILURE;
     }
@@ -49,7 +55,7 @@ int ping(const char *a, const int count)
 
     if(sendto(sock, packetdata, sizeof(packetdata), 0, (struct sockadrr*) &addr, sizeof(addr)) < 0)
     {
-        __android_log_print(ANDROID_LOG_DEBUG, "ICMP", "sendto errno %d %s\n", errno, strerror(errno));
+       LOGD("sendto errno %d %s\n", errno, strerror(errno));
 
         return EXIT_FAILURE;
     }
@@ -66,13 +72,13 @@ int ping(const char *a, const int count)
     rc = select(sock + 1, &read_set, NULL, NULL, &timeout);
     if (rc == 0)
     {
-        __android_log_print(ANDROID_LOG_DEBUG, "ICMP", "no reply in 3 second\n");
+       LOGD("no reply in 3 second\n");
 
         return EXIT_FAILURE;
     }
     else if (rc < 0)
     {
-        __android_log_print(ANDROID_LOG_DEBUG, "ICMP", "select errno %d %s\n", errno, strerror(errno));
+       LOGD("select errno %d %s\n", errno, strerror(errno));
         return EXIT_FAILURE;
     }
 
@@ -82,12 +88,12 @@ int ping(const char *a, const int count)
     rc = recvfrom(sock, data, sizeof(data), 0, NULL, &slen);
     if (rc <= 0)
     {
-        __android_log_print(ANDROID_LOG_DEBUG, "ICMP", "revcfrom errno %d %s\n", errno, strerror(errno));
+       LOGD("revcfrom errno %d %s\n", errno, strerror(errno));
         return EXIT_FAILURE;
     }
     else if (rc < sizeof(rcv_hdr))
     {
-        __android_log_print(ANDROID_LOG_DEBUG, "ICMP", "error got short ICMP packet, %d bytes\n", rc);
+       LOGD("error got short ICMP packet, %d bytes\n", rc);
 
         return EXIT_FAILURE;
     }
@@ -95,20 +101,21 @@ int ping(const char *a, const int count)
     memcpy(&rcv_hdr, data, sizeof(rcv_hdr));
     if (rcv_hdr.type == ICMP_ECHOREPLY)
     {
-        __android_log_print(ANDROID_LOG_DEBUG, "ICMP", "ICMP Reply, id=0x%x, sequence =  0x%x\n",
+       LOGD("ICMP Reply, id=0x%x, sequence =  0x%x\n",
                icmp_hdr.un.echo.id, icmp_hdr.un.echo.sequence);
     }
     else
     {
-        __android_log_print(ANDROID_LOG_DEBUG, "ICMP", "Got ICMP packet with type 0x%x ?!?\n", rcv_hdr.type);
+       LOGD("Got ICMP packet with type 0x%x ?!?\n", rcv_hdr.type);
     }
 
-    __android_log_print(ANDROID_LOG_DEBUG, "ICMP", "ICMP ECHO succeed\n");
+   LOGD("ICMP ECHO succeed\n");
     return EXIT_SUCCESS;
 }
 
 jint Java_com_github_kirillf_icmptest_MainActivity_pingJNI(JNIEnv *env, jobject thiz, jstring host, jint count)
 {
+    LOGD("pingJNI");
     return ping((*env)->GetStringUTFChars(env, host, 0), count);
 }
 
