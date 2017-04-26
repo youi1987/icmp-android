@@ -14,13 +14,20 @@
 #include <jni.h>
 #include <android/log.h>
 
+#include <time.h>
+
 #define LOGI(...) \
   ((void)__android_log_print(ANDROID_LOG_INFO, "ICMP", __VA_ARGS__))
 #define LOGD(...) \
   ((void)__android_log_print(ANDROID_LOG_DEBUG, "ICMP", __VA_ARGS__))
 
-int ping(const char *a, const int count)
-{
+long getTimeNsec() {
+    struct timespec now;
+    clock_gettime(CLOCK_REALTIME, &now);
+    return (int64_t) now.tv_sec * 1000000000LL + now.tv_nsec;
+}
+
+long ping(const char *a, const int count) {
     LOGD("start ping %s count:%d", a, count);
     struct sockaddr_in addr;
     struct icmphdr icmp_hdr;
@@ -29,18 +36,16 @@ int ping(const char *a, const int count)
     memset(&addr, 0, sizeof(addr));
     addr.sin_family = AF_INET;
 
-    if (inet_pton(AF_INET, a, &(addr.sin_addr)) < 0)
-    {
-       LOGD("inet_pton errno %d %s\n", errno, strerror(errno));
+    if (inet_pton(AF_INET, a, &(addr.sin_addr)) < 0) {
+        LOGD("inet_pton errno %d %s\n", errno, strerror(errno));
 
         return EXIT_FAILURE;
     }
 
     int sock = socket(AF_INET, SOCK_DGRAM, IPPROTO_ICMP);
 
-    if(sock < 0)
-    {
-       LOGD("socket errno %d %s\n", errno, strerror(errno));
+    if (sock < 0) {
+        LOGD("socket errno %d %s\n", errno, strerror(errno));
 
         return EXIT_FAILURE;
     }
@@ -53,9 +58,10 @@ int ping(const char *a, const int count)
     memcpy(packetdata, &icmp_hdr, sizeof(icmp_hdr));
     memcpy(packetdata + sizeof(icmp_hdr), "12345", 5);
 
-    if(sendto(sock, packetdata, sizeof(packetdata), 0, (struct sockadrr*) &addr, sizeof(addr)) < 0)
-    {
-       LOGD("sendto errno %d %s\n", errno, strerror(errno));
+    long sendTime = getTimeNsec();
+    if (sendto(sock, packetdata, sizeof(packetdata), 0, (struct sockadrr *) &addr, sizeof(addr)) <
+        0) {
+        LOGD("sendto errno %d %s\n", errno, strerror(errno));
 
         return EXIT_FAILURE;
     }
@@ -70,15 +76,13 @@ int ping(const char *a, const int count)
     FD_SET(sock, &read_set);
 
     rc = select(sock + 1, &read_set, NULL, NULL, &timeout);
-    if (rc == 0)
-    {
-       LOGD("no reply in 3 second\n");
+    long receiveTime = getTimeNsec();
+    if (rc == 0) {
+        LOGD("no reply in 3 second\n");
 
         return EXIT_FAILURE;
-    }
-    else if (rc < 0)
-    {
-       LOGD("select errno %d %s\n", errno, strerror(errno));
+    } else if (rc < 0) {
+        LOGD("select errno %d %s\n", errno, strerror(errno));
         return EXIT_FAILURE;
     }
 
@@ -86,35 +90,30 @@ int ping(const char *a, const int count)
 
     slen = 0;
     rc = recvfrom(sock, data, sizeof(data), 0, NULL, &slen);
-    if (rc <= 0)
-    {
-       LOGD("revcfrom errno %d %s\n", errno, strerror(errno));
+    if (rc <= 0) {
+        LOGD("revcfrom errno %d %s\n", errno, strerror(errno));
         return EXIT_FAILURE;
-    }
-    else if (rc < sizeof(rcv_hdr))
-    {
-       LOGD("error got short ICMP packet, %d bytes\n", rc);
+    } else if (rc < sizeof(rcv_hdr)) {
+        LOGD("error got short ICMP packet, %d bytes\n", rc);
 
         return EXIT_FAILURE;
     }
 
     memcpy(&rcv_hdr, data, sizeof(rcv_hdr));
-    if (rcv_hdr.type == ICMP_ECHOREPLY)
-    {
-       LOGD("ICMP Reply, id=0x%x, sequence =  0x%x\n",
-               icmp_hdr.un.echo.id, icmp_hdr.un.echo.sequence);
-    }
-    else
-    {
-       LOGD("Got ICMP packet with type 0x%x ?!?\n", rcv_hdr.type);
+    if (rcv_hdr.type == ICMP_ECHOREPLY) {
+        LOGD("ICMP Reply, id=0x%x, sequence =  0x%x\n",
+             icmp_hdr.un.echo.id, icmp_hdr.un.echo.sequence);
+    } else {
+        LOGD("Got ICMP packet with type 0x%x ?!?\n", rcv_hdr.type);
     }
 
-   LOGD("ICMP ECHO succeed\n");
-    return EXIT_SUCCESS;
+    LOGD("ICMP ECHO succeed\n");
+    return receiveTime - sendTime;
+    //return EXIT_SUCCESS;
 }
 
-jint Java_com_github_kirillf_icmptest_MainActivity_pingJNI(JNIEnv *env, jobject thiz, jstring host, jint count)
-{
+jlong Java_com_github_kirillf_icmptest_MainActivity_pingJNI(JNIEnv *env, jobject thiz, jstring host,
+                                                           jint count) {
     LOGD("pingJNI");
     return ping((*env)->GetStringUTFChars(env, host, 0), count);
 }
